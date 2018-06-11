@@ -1,18 +1,20 @@
 # coding: utf-8
-'''
-投影公共模块
-@author: zhangtao
-'''
 from pyproj import Proj, transform
 import numpy as np
 from dp_2d import fill_2d
 from math import ceil
 from PB.pb_space import deg2meter
+'''
+投影公共模块
+@author: zhangtao
+'''
+
 
 class prj_gll():
     '''
     等经纬度区域类
     '''
+
     def __init__(self, nlat=90., slat=-90., wlon=-180., elon=180., resLat=None, resLon=None, rowMax=None, colMax=None):
         '''
         nlat, slat, wlon, elon: 北纬, 南纬, 西经, 东经
@@ -35,19 +37,21 @@ class prj_gll():
             self.resLat = (self.nlat - self.slat) / self.rowMax
         else:
             self.resLat = float(resLat)
-            self.rowMax = int(round((self.nlat - self.slat) / self.resLat))  # 最大行数
+            self.rowMax = int(
+                round((self.nlat - self.slat) / self.resLat))  # 最大行数
 
         if resLon is None:
             self.colMax = int(colMax)
             self.resLon = (self.elon - self.wlon) / self.colMax
         else:
             self.resLon = float(resLon)
-            self.colMax = int(round((self.elon - self.wlon) / self.resLon))  # 最大列数
+            self.colMax = int(
+                round((self.elon - self.wlon) / self.resLon))  # 最大列数
 
     def generateLatsLons(self):
         lats, lons = np.mgrid[
-            self.nlat - self.resLat / 2. : self.slat + self.resLat * 0.1 :-self.resLat,
-            self.wlon + self.resLon / 2. : self.elon - self.resLon * 0.1 : self.resLon]
+            self.nlat - self.resLat / 2.: self.slat + self.resLat * 0.1:-self.resLat,
+            self.wlon + self.resLon / 2.: self.elon - self.resLon * 0.1: self.resLon]
         return lats, lons
 
     def lonslats2ij(self, lons, lats):
@@ -76,6 +80,7 @@ class prj_gll():
             lats = np.array(lats)
         return np.floor((self.nlat - lats) / self.resLat).astype(int)  # 行号
 
+
 class prj_core():
     '''
     投影公共类
@@ -93,9 +98,9 @@ class prj_core():
         col     列数
         pt_tl   左上角经纬度元组， 形式如 (lon, lat)
         pt_br   右下角经纬度元组， 形式如 (lon, lat)
-        
+
         row、 col 和  pt_tl、 pt_br 两对里必须传一对，用以确定网格大小， 不能都是None
-        
+
         projstr 样例：
         1. 等经纬
            "+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +x_0=-half_res +y_0=half_res"
@@ -105,8 +110,8 @@ class prj_core():
            "+proj=laea +lat_0=-74.180000 +lon_0=-146.620000 +x_0=0 +y_0=0 +ellps=WGS84"
         4. 阿伯斯  (常用于中国区域)
            "+proj=aea +lat_0=0 +lon_0=105 +lat_1=25 +lat_2=47 +x_0=0 +y_0=0 +ellps=krass +a=6378245.0 +b=6356863.0"
-        5. 待补充   
-        
+        5. 待补充
+
         '''
         self.proj4str = projstr
         self.pfunc = Proj(self.proj4str)  # 转换函数
@@ -132,7 +137,8 @@ class prj_core():
             self.row = int(ceil((self.y_tl - self.y_br) / self.res)) + 1
             self.col = int(ceil((self.x_br - self.x_tl) / self.res)) + 1
         else:
-            raise ValueError("row、 col 和  pt_tl、 pt_br 两对里必须传一对，用以确定网格大小， 不能都是None")
+            raise ValueError(
+                "row、 col 和  pt_tl、 pt_br 两对里必须传一对，用以确定网格大小， 不能都是None")
 
         self.grid_lonslats()
 
@@ -149,7 +155,7 @@ class prj_core():
 
         if isinstance(lons, np.ndarray):
             assert lons.shape == lats.shape, \
-           "lons and lats must have same shape."
+                "lons and lats must have same shape."
 
             args_shape = lons.shape
             # 转成1维，因为proj只接收1维参数
@@ -218,7 +224,7 @@ class prj_core():
         if isinstance(j, (list, tuple)):
             j = np.array(j)
         x = j * self.res + self.x_tl
-        return  x
+        return x
 
     def create_lut(self, Lons, Lats):
         '''
@@ -230,7 +236,7 @@ class prj_core():
         if isinstance(Lats, (list, tuple)):
             Lats = np.array(Lats)
         assert Lons.shape == Lats.shape, \
-           "Lons and Lats must have same shape."
+            "Lons and Lats must have same shape."
 
         # 投影后的行列 proj1_i,proj1_j
         proj1_i, proj1_j = self.lonslats2ij(Lons, Lats)
@@ -300,15 +306,21 @@ if __name__ == '__main__':
     # 等经纬测试-----------------------------------------------------------------
     # 等经纬的 projstr 需要加上  +x_0=-half_res +y_0=half_res 才能保证经纬度在中心 ！！！
     # test1 test2 两种方式由于浮点数原因，有微妙的差别
-    res = 1.  # deg
+    res = 0.17  # deg
     half_res = deg2meter(res) / 2.
 
-    projstr = '+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=0 +x_0=-%f +y_0=%f +datum=WGS84' % (half_res, half_res)
+    projstr = '+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=0 +x_0=-%f +y_0=%f +datum=WGS84' % (
+        half_res, half_res)
 
     print "test1"
-    p = prj_core(projstr, res, unit="deg", pt_tl=(-179.5, 89.5), pt_br=(179.5, -89.5))  # 角点也要放在格点中心位置
+    res = 17000
+    p = prj_core(projstr, res, pt_tl=(-179.5, 89.5),
+                 pt_br=(179.5, -89.5))  # 角点也要放在格点中心位置
     print p.y_tl, p.x_tl
     print p.lonslats2ij(-180, 90)
+    print p.lons.shape
+    print p.lons[0, 0],  p.lats[0, 0]
+    print p.lons[-1, -1],  p.lats[-1, -1]
 #     print p.lonslats2ij(-180, 90), p.lonslats2ij(-180, 90), p.lonslats2ij(180, 90), p.lonslats2ij(-180, -90)
 #     print p.lonslats2ij(10.6, 39)
 #     print p.lonslats2ij(-179, 89), p.lonslats2ij(-179.001, 89.001), p.lonslats2ij(-178.999, 88.999)
@@ -316,7 +328,11 @@ if __name__ == '__main__':
 
     print "\ntest2"
     p = prj_core(projstr, res, unit="deg", row=180, col=360)
+#     p = prj_core(projstr, 17000, row=1179, col=2350)
     print p.y_tl, p.x_tl
+    print 'mmmmm'
+    print p.lons[0, 0],  p.lats[0, 0]
+    print p.lons[-1, -1],  p.lats[-1, -1]
     print p.lonslats2ij(-180, 90)
 #     print p.lonslats2ij(-180, 90), p.lonslats2ij(-180, 90), p.lonslats2ij(180, 90), p.lonslats2ij(-180, -90)
 #     print p.lonslats2ij(10.6, 39)
@@ -329,4 +345,5 @@ if __name__ == '__main__':
     print p.lonslats2ij(-180, 90)
 #     print p.lonslats2ij(-180, 90), p.lonslats2ij(-180, 90), p.lonslats2ij(180, 90), p.lonslats2ij(-180, -90)
 #     print p.lonslats2ij(10.6, 39)
-#     print p.lonslats2ij(-179, 89), p.lonslats2ij(-179.001, 89.001), p.lonslats2ij(-178.999, 88.999)
+# print p.lonslats2ij(-179, 89), p.lonslats2ij(-179.001, 89.001),
+# p.lonslats2ij(-178.999, 88.999)
