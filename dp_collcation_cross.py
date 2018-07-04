@@ -1,23 +1,26 @@
 # coding: utf-8
-import os
-import sys
-import yaml
-import h5py
-import numpy as np
-from dp_2d import rolling_2d_window_pro
-from PB.pb_sat import sun_glint_cal
-from DV import dv_map, dv_plt, dv_img
-from dp_prj import fill_points_2d
 '''
 匹配类
 @author: wangpeng
 '''
 
+import os
+import sys
+
+import h5py
+import yaml
+
+from DV import dv_map, dv_plt, dv_img
+from PB.pb_sat import sun_glint_cal
+from dp_2d import rolling_2d_window_pro
+from dp_prj import fill_points_2d
+import numpy as np
+
 
 def regression(x, y, value_min, value_max, flag, ICFG, MCFG, Band):
 
     # FY4分布
-    MainPath, MainFile = os.path.split(ICFG.ofile)
+    MainPath, _ = os.path.split(ICFG.ofile)
     if not os.path.isdir(MainPath):
         os.makedirs(MainPath)
 
@@ -48,28 +51,6 @@ def regression(x, y, value_min, value_max, flag, ICFG, MCFG, Band):
     ofile = os.path.join(MainPath, '%s+%s_%s+%s_%s_%s_%s.png' %
                          (ICFG.sat1, ICFG.sensor1, ICFG.sat2, ICFG.sensor2, ICFG.ymd, Band, flag))
     p.savefig(ofile, dpi=300)
-
-
-def _get_band_dataset(set_name, hdf5_file, band=None):
-    """
-    获取某个通道对应名字的数据集，如果没有，赋值为 None
-    :param band: 通道名
-    :param set_name: 数据集名
-    :param hdf5: hdf5 文件
-    :return:
-    """
-    if band is None:
-        keys = hdf5_file.keys()
-        if set_name in keys:
-            return hdf5_file.get(set_name)[:]
-        else:
-            return None
-    else:
-        keys = hdf5_file.get(band).keys()
-        if set_name in keys:
-            return hdf5_file.get(band)[set_name][:]
-        else:
-            return None
 
 
 class ReadModeYaml():
@@ -144,304 +125,50 @@ class COLLOC_COMM(object):
         self.dtype = 'f4'
         self.BandLst = BandLst
 
-#         self.Glint1 = []
-#         self.Glint2 = []
-
         # 投影后的全局变量信息
-        self.Time1 = np.full((row, col), self.FillValue, self.dtype)
-        self.Lon1 = np.full((row, col), self.FillValue, self.dtype)
-        self.Lat1 = np.full((row, col), self.FillValue, self.dtype)
-        self.SatA1 = np.full((row, col), self.FillValue, self.dtype)
-        self.SatZ1 = np.full((row, col), self.FillValue, self.dtype)
-        self.SunA1 = np.full((row, col), self.FillValue, self.dtype)
-        self.SunZ1 = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_Time = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_Lon = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_Lat = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_SatA = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_SatZ = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_SoA = np.full((row, col), self.FillValue, self.dtype)
+        self.S1_SoZ = np.full((row, col), self.FillValue, self.dtype)
 
-        self.LandCover1 = np.full((row, col), -999, 'i2')
-        self.LandSeaMask1 = np.full((row, col), -999, 'i2')
+        self.S2_Time = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_Lon = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_Lat = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_SatA = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_SatZ = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_SoA = np.full((row, col), self.FillValue, self.dtype)
+        self.S2_SoZ = np.full((row, col), self.FillValue, self.dtype)
 
-        self.Time2 = np.full((row, col), self.FillValue, self.dtype)
-        self.Lon2 = np.full((row, col), self.FillValue, self.dtype)
-        self.Lat2 = np.full((row, col), self.FillValue, self.dtype)
-        self.SatA2 = np.full((row, col), self.FillValue, self.dtype)
-        self.SatZ2 = np.full((row, col), self.FillValue, self.dtype)
-        self.SunA2 = np.full((row, col), self.FillValue, self.dtype)
-        self.SunZ2 = np.full((row, col), self.FillValue, self.dtype)
-
-        self.LandCover2 = np.full((row, col), -999, 'i2')
-        self.LandSeaMask2 = np.full((row, col), -999, 'i2')
-
-        # 高光谱信息
-        self.spec_MaskRough_row = []  # 记录投影2维网格的行
-        self.spec_MaskRough_col = []  # 记录投影2维网格的列
-        self.spec_MaskRough_all = {}  # 记录所有光谱
-        self.spec_MaskRough_value = None  # 记录粗掩码表的光谱
-
+        # 粗匹配掩码记录表
         self.MaskRough = np.full((row, col), 0, 'i1')
         self.PubIdx = np.full((row, col), 0, 'i1')
 
-        # 定义各个物理属性字典
+        # 精匹配掩码记录表，按照通道存放
         self.MaskFine = {}
-
-        # SAT1 FOV ENV
-        self.FovDnMean1 = {}
-        self.FovDnStd1 = {}
-        self.FovRefMean1 = {}
-        self.FovRefStd1 = {}
-        self.FovRadMean1 = {}
-        self.FovRadStd1 = {}
-        self.FovTbbMean1 = {}
-        self.FovTbbStd1 = {}
-
-        self.EnvDnMean1 = {}
-        self.EnvDnStd1 = {}
-        self.EnvRefMean1 = {}
-        self.EnvRefStd1 = {}
-        self.EnvRadMean1 = {}
-        self.EnvRadStd1 = {}
-        self.EnvTbbMean1 = {}
-        self.EnvTbbStd1 = {}
-        self.SV1 = {}
-        self.BB1 = {}
-
-        # SAT2 FOV ENV
-        self.FovDnMean2 = {}
-        self.FovDnStd2 = {}
-        self.FovRefMean2 = {}
-        self.FovRefStd2 = {}
-        self.FovRadMean2 = {}
-        self.FovRadStd2 = {}
-        self.FovTbbMean2 = {}
-        self.FovTbbStd2 = {}
-
-        self.EnvDnMean2 = {}
-        self.EnvDnStd2 = {}
-        self.EnvRefMean2 = {}
-        self.EnvRefStd2 = {}
-        self.EnvRadMean2 = {}
-        self.EnvRadStd2 = {}
-        self.EnvTbbMean2 = {}
-        self.EnvTbbStd2 = {}
-        self.SV2 = {}
-        self.BB2 = {}
 
         # 初始化字典内的存放每个通道的数据空间
         for band in BandLst:
             self.MaskFine[band] = np.full((row, col), 0, 'i1')
-            self.FovDnMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovDnStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRefMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRefStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRadMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRadStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovTbbMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovTbbStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-
-            self.EnvDnMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvDnStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRefMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRefStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRadMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRadStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvTbbMean1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvTbbStd1[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.SV1[band] = np.full((row, col), self.FillValue, self.dtype)
-            self.BB1[band] = np.full((row, col), self.FillValue, self.dtype)
-
-            # SAT2 FOV ENV
-            self.FovDnMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovDnStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRefMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRefStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRadMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovRadStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovTbbMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.FovTbbStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-
-            self.EnvDnMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvDnStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRefMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRefStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRadMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvRadStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvTbbMean2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-            self.EnvTbbStd2[band] = np.full(
-                (row, col), self.FillValue, self.dtype)
-
-            self.SV2[band] = np.full((row, col), self.FillValue, self.dtype)
-            self.BB2[band] = np.full((row, col), self.FillValue, self.dtype)
 
     def correct_target_ref_data(self):
         '''
         订正第二颗传感器可见光通道的ref值 
         '''
-        coeff = np.cos(np.deg2rad(self.SunZ1)) / np.cos(np.deg2rad(self.SunZ2))
-        for band in sorted(self.FovRefMean1.keys()):
-            if self.FovRefMean2[band] is not None:
-                print '订正 sensor2 ref band %s' % band
-                idx = np.where(self.FovRefMean2[band] > 0)
-                self.FovRefMean2[band][idx] = self.FovRefMean2[
-                    band][idx] * coeff[idx]
-                idx = np.where(self.EnvRefMean2[band] > 0)
-                self.EnvRefMean2[band][idx] = self.EnvRefMean2[
-                    band][idx] * coeff[idx]
-
-    def reload_data(self, ICFG, MCFG):
-        """
-        :param ICFG: 输入配置文件
-        :param MCFG: 阈值配置文件
-        :return:
-        """
-        i_file = ICFG.ofile
-        row = ICFG.row
-        col = ICFG.col
-        with h5py.File(i_file, 'r') as hdf5File:
-            global_keys = hdf5File.keys()
-            if 'MaskRough' in global_keys:
-                self.MaskRough = np.full((row, col), 0, 'i1')
-            if 'PubIdx' in global_keys:
-                self.PubIdx = _get_band_dataset('PubIdx', hdf5File)
-
-            self.Time1 = _get_band_dataset('S1_Time', hdf5File)
-            self.Lon1 = _get_band_dataset('S1_Lon', hdf5File)
-            self.Lat1 = _get_band_dataset('S1_Lat', hdf5File)
-            self.SatA1 = _get_band_dataset('S1_SatA', hdf5File)
-            self.SatZ1 = _get_band_dataset('S1_SatZ', hdf5File)
-            self.SunA1 = _get_band_dataset('S1_SoA', hdf5File)
-            self.SunZ1 = _get_band_dataset('S1_SoZ', hdf5File)
-            self.LandCover1 = _get_band_dataset('S1_LandCover', hdf5File)
-            self.LandSeaMask1 = _get_band_dataset('S1_LandSeaMask', hdf5File)
-            self.spec_MaskRough_col = _get_band_dataset(
-                'S1_Spec_MaskRough_col', hdf5File)
-            self.spec_MaskRough_row = _get_band_dataset(
-                'S1_Spec_MaskRough_row', hdf5File)
-            self.spec_MaskRough_value = _get_band_dataset(
-                'S1_Spec_MaskRough_value', hdf5File)
-
-            self.Time2 = _get_band_dataset('S2_Time', hdf5File)
-            self.Lon2 = _get_band_dataset('S2_Lon', hdf5File)
-            self.Lat2 = _get_band_dataset('S2_Lat', hdf5File)
-            self.SatA2 = _get_band_dataset('S2_SatA', hdf5File)
-            self.SatZ2 = _get_band_dataset('S2_SatZ', hdf5File)
-            self.SunA2 = _get_band_dataset('S2_SoA', hdf5File)
-            self.SunZ2 = _get_band_dataset('S2_SoZ', hdf5File)
-            self.LandCover2 = _get_band_dataset('S2_LandCover', hdf5File)
-            self.LandSeaMask2 = _get_band_dataset('S2_LandSeaMask', hdf5File)
-            self.spec_MaskRough_col = _get_band_dataset(
-                'S2_Spec_MaskRough_col', hdf5File)
-            self.spec_MaskRough_row = _get_band_dataset(
-                'S2_Spec_MaskRough_row', hdf5File)
-            self.spec_MaskRough_value = _get_band_dataset(
-                'S2_Spec_MaskRough_value', hdf5File)
-
-            for band in MCFG.chan1:
-                self.MaskFine[band] = np.full((row, col), 0, 'i1')
-                self.FovDnMean1[band] = _get_band_dataset(
-                    'S1_FovDnMean', hdf5File, band)
-                self.FovDnStd1[band] = _get_band_dataset(
-                    'S1_FovDnStd', hdf5File, band)
-                self.FovRefMean1[band] = _get_band_dataset(
-                    'S1_FovRefMean', hdf5File, band)
-                self.FovRefStd1[band] = _get_band_dataset(
-                    'S1_FovRefStd', hdf5File, band)
-                self.FovRadMean1[band] = _get_band_dataset(
-                    'S1_FovRadMean', hdf5File, band)
-                self.FovRadStd1[band] = _get_band_dataset(
-                    'S1_FovRadStd', hdf5File, band)
-                self.FovTbbMean1[band] = _get_band_dataset(
-                    'S1_FovTbbMean', hdf5File, band)
-                self.FovTbbStd1[band] = _get_band_dataset(
-                    'S1_FovTbbStd', hdf5File, band)
-
-                self.EnvDnMean1[band] = _get_band_dataset(
-                    'S1_EnvDnMean', hdf5File, band)
-                self.EnvDnStd1[band] = _get_band_dataset(
-                    'S1_EnvDnStd', hdf5File, band)
-                self.EnvRefMean1[band] = _get_band_dataset(
-                    'S1_EnvRefMean', hdf5File, band)
-                self.EnvRefStd1[band] = _get_band_dataset(
-                    'S1_EnvRefStd', hdf5File, band)
-                self.EnvRadMean1[band] = _get_band_dataset(
-                    'S1_EnvRadMean', hdf5File, band)
-                self.EnvRadStd1[band] = _get_band_dataset(
-                    'S1_EnvRadStd', hdf5File, band)
-                self.EnvTbbMean1[band] = _get_band_dataset(
-                    'S1_EnvTbbMean', hdf5File, band)
-                self.EnvTbbStd1[band] = _get_band_dataset(
-                    'S1_nvTbbStd', hdf5File, band)
-                self.SV1[band] = _get_band_dataset(
-                    'S1_SV', hdf5File, band)
-                self.BB1[band] = _get_band_dataset(
-                    'S1_BB', hdf5File, band)
-
-                # SAT2 FOV ENV
-                self.FovDnMean2[band] = _get_band_dataset(
-                    'S2_FovDnMean', hdf5File, band)
-                self.FovDnStd2[band] = _get_band_dataset(
-                    'S2_FovDnStd', hdf5File, band)
-                self.FovRefMean2[band] = _get_band_dataset(
-                    'S2_FovRefMean', hdf5File, band)
-                self.FovRefStd2[band] = _get_band_dataset(
-                    'S2_FovRefStd', hdf5File, band)
-                self.FovRadMean2[band] = _get_band_dataset(
-                    'S2_FovRadMean', hdf5File, band)
-                self.FovRadStd2[band] = _get_band_dataset(
-                    'S2_FovRadStd', hdf5File, band)
-                self.FovTbbMean2[band] = _get_band_dataset(
-                    'S2_FovTbbMean', hdf5File, band)
-                self.FovTbbStd2[band] = _get_band_dataset(
-                    'S2_FovTbbStd', hdf5File, band)
-
-                self.EnvDnMean2[band] = _get_band_dataset(
-                    'S2_EnvDnMean', hdf5File, band)
-                self.EnvDnStd2[band] = _get_band_dataset(
-                    'S2_EnvDnStd', hdf5File, band)
-                self.EnvRefMean2[band] = _get_band_dataset(
-                    'S2_EnvRefMean', hdf5File, band)
-                self.EnvRefStd2[band] = _get_band_dataset(
-                    'S2_EnvRefStd', hdf5File, band)
-                self.EnvRadMean2[band] = _get_band_dataset(
-                    'S2_EnvRadMean', hdf5File, band)
-                self.EnvRadStd2[band] = _get_band_dataset(
-                    'S2_EnvRadStd', hdf5File, band)
-                self.EnvTbbMean2[band] = _get_band_dataset(
-                    'S2_EnvTbbMean', hdf5File, band)
-                self.EnvTbbStd2[band] = _get_band_dataset(
-                    'S2_nvTbbStd', hdf5File, band)
-                self.SV2[band] = _get_band_dataset(
-                    'S2_SV', hdf5File, band)
-                self.BB2[band] = _get_band_dataset(
-                    'S2_BB', hdf5File, band)
+        coeff = np.cos(np.deg2rad(self.S1_SoZ)) / \
+            np.cos(np.deg2rad(self.S2_SoZ))
+        if hasattr(self, 'S1_FovRefMean'):
+            for band in sorted(self.S1_FovRefMean.keys()):
+                if band in self.S2_FovRefMean.keys():
+                    print '订正 sensor2 ref band %s' % band
+                    idx = np.where(self.S2_FovRefMean[band] > 0)
+                    self.S2_FovRefMean[band][idx] = self.S2_FovRefMean[
+                        band][idx] * coeff[idx]
+                    idx = np.where(self.S2_EnvRefMean[band] > 0)
+                    self.S2_EnvRefMean[band][idx] = self.S2_EnvRefMean[
+                        band][idx] * coeff[idx]
 
     def save_rough_data(self, P1, P2, D1, D2, modeCfg):
         """
@@ -451,12 +178,12 @@ class COLLOC_COMM(object):
         # 公共的投影区域位置信息
         condition = np.logical_and(P1.lut_i > 0, P2.lut_i > 0)
         idx = np.where(condition)
-        # 记录粗匹配点
-        self.PubIdx[idx] = 1
         print u'FY LEO 公共区域匹配点个数 %d' % len(idx[0])
         # 粗匹配点没有则返回
         if len(idx[0]) == 0:
             return
+        # 记录粗匹配点
+        self.PubIdx[idx] = 1
 
         # 投影后网格，公共区域的投影后数据的行列
         p_i = idx[0]
@@ -468,219 +195,175 @@ class COLLOC_COMM(object):
         i2 = P2.lut_i[idx]
         j2 = P2.lut_j[idx]
 
-        # 保存传感器1 的投影公共数据信息
-        self.Time1[idx] = D1.Time[i1, j1]
-        self.Lon1[idx] = D1.Lons[i1, j1]
-        self.Lat1[idx] = D1.Lats[i1, j1]
-        self.SatA1[idx] = D1.satAzimuth[i1, j1]
-        self.SatZ1[idx] = D1.satZenith[i1, j1]
-        self.SunA1[idx] = D1.sunAzimuth[i1, j1]
-        self.SunZ1[idx] = D1.sunZenith[i1, j1]
+        # 11111111 保存传感器1,2 的投影公共数据信息
+        self.S1_Time[idx] = D1.Time[i1, j1]
+        self.S1_Lon[idx] = D1.Lons[i1, j1]
+        self.S1_Lat[idx] = D1.Lats[i1, j1]
+        self.S1_SatA[idx] = D1.satAzimuth[i1, j1]
+        self.S1_SatZ[idx] = D1.satZenith[i1, j1]
+        self.S1_SoA[idx] = D1.sunAzimuth[i1, j1]
+        self.S1_SoZ[idx] = D1.sunZenith[i1, j1]
 
-        if D1.LandCover is not None:
-            self.LandCover1[idx] = D1.LandCover[i1, j1]
-        else:
-            self.LandCover1 = None
-        if D1.LandSeaMask is not None:
-            self.LandSeaMask1[idx] = D1.LandSeaMask[i1, j1]
-        else:
-            self.LandSeaMask1 = None
+        self.S2_Time[idx] = D2.Time[i2, j2]
+        self.S2_Lon[idx] = D2.Lons[i2, j2]
+        self.S2_Lat[idx] = D2.Lats[i2, j2]
+        self.S2_SatA[idx] = D2.satAzimuth[i2, j2]
+        self.S2_SatZ[idx] = D2.satZenith[i2, j2]
+        self.S2_SoA[idx] = D2.sunAzimuth[i2, j2]
+        self.S2_SoZ[idx] = D2.sunZenith[i2, j2]
 
-        # 保存传感器2 的投影公共数据信息
-        self.Time2[idx] = D2.Time[i2, j2]
-        self.Lon2[idx] = D2.Lons[i2, j2]
-        self.Lat2[idx] = D2.Lats[i2, j2]
-        self.SatA2[idx] = D2.satAzimuth[i2, j2]
-        self.SatZ2[idx] = D2.satZenith[i2, j2]
-        self.SunA2[idx] = D2.sunAzimuth[i2, j2]
-        self.SunZ2[idx] = D2.sunZenith[i2, j2]
+        # 高光谱信息, 因为交叉模式下点太多，只记录粗匹配上的光谱信息，和精匹配不同
 
-        if D2.LandCover is not None:
-            self.LandCover2[idx] = D2.LandCover[i2, j2]
-        else:
-            self.LandCover2 = None
-        if D2.LandSeaMask is not None:
-            self.LandSeaMask2[idx] = D2.LandSeaMask[i2, j2]
-        else:
-            self.LandSeaMask2 = None
-
+        # 如果需要保存光谱信息 则进行光谱数据处理并保存，只保存公共区域的信息
         if modeCfg.write_spec:
             # 2维下标转1维下标
-            idx_1d = np.ravel_multi_index(idx, (self.row, self.col))
-            for i in xrange(len(idx_1d)):
-                self.spec_MaskRough_all[idx_1d[i]] = D2.radiance[i2[i], :]
+            if hasattr(D2, 'radiance') and not hasattr(self, 'S2_Spectral'):
+                self.S2_Spec_row = []  # 记录投影2维网格的行
+                self.S2_Spec_col = []  # 记录投影2维网格的列
+                self.S2_Spec_all = {}  # 记录所有光谱
+                self.S2_Spectral = []  # 记录粗掩码表的光谱
 
-        ############# sat1 各项值计算 #############
-        for Band1 in modeCfg.chan1:
-            index = modeCfg.chan1.index(Band1)
-            Band2 = modeCfg.chan2[index]
-            ############# sat1 DN #############
-            if Band1 in D1.DN.keys():
-                # sat1 Fov和Env dn的mean和std
-                data = D1.DN[Band1]
-                # 计算各个通道的投影后数据位置对应原始数据位置点的指定范围的均值和std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind1, i1, j1, p_i, p_j)
-                self.FovDnMean1[Band1][pi, pj] = mean
-                self.FovDnStd1[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind1, i1, j1, p_i, p_j)
-                self.EnvDnMean1[Band1][pi, pj] = mean
-                self.EnvDnStd1[Band1][pi, pj] = std
-            else:
-                self.FovDnMean1[Band1] = None
-                self.FovDnStd1[Band1] = None
-                self.EnvDnMean1[Band1] = None
-                self.EnvDnStd1[Band1] = None
+            if hasattr(self, 'S2_Spectral'):
+                idx_1d = np.ravel_multi_index(idx, (self.row, self.col))
+                for i in xrange(len(idx_1d)):
+                    self.S2_Spec_all[idx_1d[i]] = D2.radiance[i2[i], :]
 
-            ############# sat1 Ref #############
-            if Band1 in D1.Ref.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D1.Ref['%s' % Band1]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind1, i1, j1, p_i, p_j)
-                self.FovRefMean1[Band1][pi, pj] = mean
-                self.FovRefStd1[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind1, i1, j1, p_i, p_j)
-                self.EnvRefMean1[Band1][pi, pj] = mean
-                self.EnvRefStd1[Band1][pi, pj] = std
-            else:
-                self.FovRefMean1[Band1] = None
-                self.FovRefStd1[Band1] = None
-                self.EnvRefMean1[Band1] = None
-                self.EnvRefStd1[Band1] = None
+        # 保存传感器1的定标系数保存
+        # wangpeng add 2018-06-30
+        if hasattr(D1, 'cal_coeff1') and not hasattr(self, 'S1_cal_coeff'):
+            # 存放规则k0,k1,k2 ,红外通道则是k0,k2,k3,  k1放到数据集中了
+            self.S1_cal_coeff = {}
+        if hasattr(self, 'S1_cal_coeff'):
+            for band1 in modeCfg.chan1:
+                self.S1_cal_coeff[band1] = D1.cal_coeff1[band1]
 
-            ############# sat1 Rad #############
-            if Band1 in D1.Rad.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D1.Rad['%s' % Band1]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind1, i1, j1, p_i, p_j)
-                self.FovRadMean1[Band1][pi, pj] = mean
-                self.FovRadStd1[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind1, i1, j1, p_i, p_j)
-                self.EnvRadMean1[Band1][pi, pj] = mean
-                self.EnvRadStd1[Band1][pi, pj] = std
-            else:
-                self.FovRadMean1[Band1] = None
-                self.FovRadStd1[Band1] = None
-                self.EnvRadMean1[Band1] = None
-                self.EnvRadStd1[Band1] = None
+        # 保存辅助信息
+        self.__init_class_array_geo(
+            D1, 'LandCover', 'S1_LandCover', i1, j1, p_i, p_j)
+        self.__init_class_array_geo(
+            D1, 'LandSeaMask', 'S1_LandSeaMask', i1, j1, p_i, p_j)
 
-            ############# sat1 Tbb #############
-            if Band1 in D1.Tbb.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D1.Tbb['%s' % Band1]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind1, i1, j1, p_i, p_j)
-                self.FovTbbMean1[Band1][pi, pj] = mean
-                self.FovTbbStd1[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind1, i1, j1, p_i, p_j)
-                self.EnvTbbMean1[Band1][pi, pj] = mean
-                self.EnvTbbStd1[Band1][pi, pj] = std
-            else:
-                self.FovTbbMean1[Band1] = None
-                self.FovTbbStd1[Band1] = None
-                self.EnvTbbMean1[Band1] = None
-                self.EnvTbbStd1[Band1] = None
+        self.__init_class_array_geo(
+            D2, 'LandSeaMask', 'S2_LandSeaMask', i2, j2, p_i, p_j)
+        self.__init_class_array_geo(
+            D2, 'LandSeaMask', 'S2_LandSeaMask', i2, j2, p_i, p_j)
 
-            # sat1 sv和 bb的赋值
-            if D1.SV[Band1] is not None:
-                self.SV1[Band1][p_i, p_j] = D1.SV[Band1][i1, j1]
-            else:
-                self.SV1[Band1] = None
+        self.__init_class_dict_geo(
+            D1, 'SV', 'S1_SV', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_geo(
+            D1, 'BB', 'S1_BB', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_geo(
+            D1, 'cal_coeff2', 'S1_IrCalSlope', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_geo(
+            D2, 'SV', 'S2_SV', modeCfg, i2, j2, p_i, p_j)
+        self.__init_class_dict_geo(
+            D2, 'BB', 'S2_BB', modeCfg, i2, j2, p_i, p_j)
 
-            if D1.BB[Band1] is not None:
-                self.BB1[Band1][p_i, p_j] = D1.BB[Band1][i1, j1]
-            else:
-                self.BB1[Band1] = None
+        # 关键物理量的均值和std计算
+        self.__init_class_dict_dn(D1, 'Dn', 'S1', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_dn(D1, 'Ref', 'S1', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_dn(D1, 'Rad', 'S1', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_dn(D1, 'Tbb', 'S1', modeCfg, i1, j1, p_i, p_j)
+        self.__init_class_dict_dn(D2, 'Dn', 'S2', modeCfg, i2, j2, p_i, p_j)
+        self.__init_class_dict_dn(D2, 'Ref', 'S2', modeCfg, i2, j2, p_i, p_j)
+        self.__init_class_dict_dn(D2, 'Rad', 'S2', modeCfg, i2, j2, p_i, p_j)
+        self.__init_class_dict_dn(D2, 'Tbb', 'S2', modeCfg, i2, j2, p_i, p_j)
 
-            ############# sat2 各项值计算 #############
-            ############# sat2 DN #############
-            if Band2 in D2.DN.keys():
-                # sat1 Fov和Env dn的mean和std
-                data = D2.DN[Band2]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind2, i2, j2, p_i, p_j)
-                self.FovDnMean2[Band1][pi, pj] = mean
-                self.FovDnStd2[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind2, i2, j2, p_i, p_j)
-                self.EnvDnMean2[Band1][pi, pj] = mean
-                self.EnvDnStd2[Band1][pi, pj] = std
-            else:
-                self.FovDnMean2[Band1] = None
-                self.FovDnStd2[Band1] = None
-                self.EnvDnMean2[Band1] = None
-                self.EnvDnStd2[Band1] = None
+    def __init_class_dict_dn(self, idata, name, sensor, modeCfg, i, j, x, y):
 
-            ############# sat2 Ref #############
-            if Band2 in D2.Ref.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D2.Ref['%s' % Band2]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind2, i2, j2, p_i, p_j)
-                self.FovRefMean2[Band1][pi, pj] = mean
-                self.FovRefStd2[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind2, i2, j2, p_i, p_j)
-                self.EnvRefMean2[Band1][pi, pj] = mean
-                self.EnvRefStd2[Band1][pi, pj] = std
-            else:
-                self.FovRefMean2[Band1] = None
-                self.FovRefStd2[Band1] = None
-                self.EnvRefMean2[Band1] = None
-                self.EnvRefStd2[Band1] = None
+        member1 = '%s_Fov%sMean' % (sensor, name)
+        member2 = '%s_Fov%sStd' % (sensor, name)
+        member3 = '%s_Env%sMean' % (sensor, name)
+        member4 = '%s_Env%sStd' % (sensor, name)
 
-            ############# sat1 Rad #############
-            if Band2 in D2.Rad.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D2.Rad['%s' % Band2]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind2, i2, j2, p_i, p_j)
-                self.FovRadMean2[Band1][pi, pj] = mean
-                self.FovRadStd2[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind2, i2, j2, p_i, p_j)
-                self.EnvRadMean2[Band1][pi, pj] = mean
-                self.EnvRadStd2[Band1][pi, pj] = std
-            else:
-                self.FovRadMean2[Band1] = None
-                self.FovRadStd2[Band1] = None
-                self.EnvRadMean2[Band1] = None
-                self.EnvRadStd2[Band1] = None
+        if hasattr(idata, name) and not hasattr(self, member1):
+            self.__dict__[member1] = {}
+            self.__dict__[member2] = {}
+            self.__dict__[member3] = {}
+            self.__dict__[member4] = {}
 
-            ############# sat2 Tbb #############
-            if Band2 in D2.Tbb.keys():
-                # sat1 Fov和Env Ref的mean和std
-                data = D2.Tbb['%s' % Band2]
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.FovWind2, i2, j2, p_i, p_j)
-                self.FovTbbMean2[Band1][pi, pj] = mean
-                self.FovTbbStd2[Band1][pi, pj] = std
-                mean, std, pi, pj = rolling_2d_window_pro(
-                    data, modeCfg.EnvWind2, i2, j2, p_i, p_j)
-                self.EnvTbbMean2[Band1][pi, pj] = mean
-                self.EnvTbbStd2[Band1][pi, pj] = std
-            else:
-                self.FovTbbMean2[Band1] = None
-                self.FovTbbStd2[Band1] = None
-                self.EnvTbbMean2[Band1] = None
-                self.EnvTbbStd2[Band1] = None
+            for band1 in modeCfg.chan1:
+                index = modeCfg.chan1.index(band1)
+                band2 = modeCfg.chan2[index]
+                if 'S1' in sensor:
+                    band = band1
+                elif 'S2' in sensor:
+                    band = band2
 
-            # sat1 sv和 bb的赋值
-            if D2.SV[Band2] is not None:
-                self.SV2[Band1][p_i, p_j] = D2.SV[Band2][i2, j2]
-            else:
-                self.SV2[Band1] = None
+                if band in eval('idata.%s.keys()' % name):
+                    self.__dict__[member1][band1] = np.full(
+                        (self.row, self.col), self.FillValue, self.dtype)
+                    self.__dict__[member2][band1] = np.full(
+                        (self.row, self.col), self.FillValue, self.dtype)
+                    self.__dict__[member3][band1] = np.full(
+                        (self.row, self.col), self.FillValue, self.dtype)
+                    self.__dict__[member4][band1] = np.full(
+                        (self.row, self.col), self.FillValue, self.dtype)
 
-            if D2.BB[Band2] is not None:
-                self.BB2[Band1][p_i, p_j] = D2.BB[Band2][i2, j2]
-            else:
-                self.BB2[Band1] = None
+        if hasattr(self, member1):
+            for band1 in modeCfg.chan1:
+                index = modeCfg.chan1.index(band1)
+                band2 = modeCfg.chan2[index]
+                if 'S1' in sensor:
+                    band = band1
+                    FovWind = modeCfg.FovWind1
+                    EnvWind = modeCfg.EnvWind1
+                elif 'S2' in sensor:
+                    band = band2
+                    FovWind = modeCfg.FovWind2
+                    EnvWind = modeCfg.EnvWind2
+                if band in eval('idata.%s.keys()' % name):
+                    # sat1 Fov和Env dn的mean和std
+                    data = eval('idata.%s["%s"]' % (name, band))
+                    # 计算各个通道的投影后数据位置对应原始数据位置点的指定范围的均值和std
+                    mean, std, pi, pj = rolling_2d_window_pro(
+                        data, FovWind, i, j, x, y)
+                    self.__dict__[member1][band1][pi, pj] = mean
+                    self.__dict__[member2][band1][pi, pj] = std
+                    mean, std, pi, pj = rolling_2d_window_pro(
+                        data, EnvWind, i, j, x, y)
+                    self.__dict__[member3][band1][pi, pj] = mean
+                    self.__dict__[member4][band1][pi, pj] = std
+
+    def __init_class_dict_geo(self, idata, name1, name2, modeCfg, i, j, x, y):
+        '''
+        直接使用查找表赋值，不需要计算均值std 和 窗区
+        '''
+
+        if hasattr(idata, name1) and not hasattr(self, name2):
+            self.__dict__[name2] = {}
+
+            for band1 in modeCfg.chan1:
+                index = modeCfg.chan1.index(band1)
+                band2 = modeCfg.chan2[index]
+                if 'S1' in name2:
+                    band = band1
+                elif 'S2' in name2:
+                    band = band2
+
+                if band in eval('idata.%s.keys()' % name1):
+                    self.__dict__[name2][band1] = np.full(
+                        (self.row, self.col), self.FillValue, self.dtype)
+
+        if hasattr(self, name2):
+            for band1 in modeCfg.chan1:
+                index = modeCfg.chan1.index(band1)
+                band2 = modeCfg.chan2[index]
+                if 'S1' in name2:
+                    band = band1
+                elif 'S2' in name2:
+                    band = band2
+                if band in eval('idata.%s.keys()' % name1):
+                    data = eval('idata.%s["%s"]' % (name1, band))
+                    self.__dict__[name2][band1][x, y] = data[i, j]
+
+    def __init_class_array_geo(self, idata, name1, name2, i, j, x, y):
+
+        if hasattr(idata, name1) and not hasattr(self, name2):
+            self.__dict__[name2] = np.full((self.row, self.col), -999, 'i2')
+        if hasattr(self, name2):
+            data = eval('idata.%s' % name1)
+            self.__dict__[name2][x, y] = data[i, j]
 
     def save_fine_data(self, modeCfg):
         """
@@ -693,49 +376,40 @@ class COLLOC_COMM(object):
             return
         print u'所有粗匹配点数目 ', len(idx[0])
 
-        ############### 计算共同区域的距离差 #########
-        disDiff = np.full_like(self.Time1, '-1', dtype='i2')
-        a = np.power(self.Lon2[idx] - self.Lon1[idx], 2)
-        b = np.power(self.Lat2[idx] - self.Lat1[idx], 2)
+        # 掩码清零
+        self.MaskRough[:] = 0
+
+        # 计算共同区域的距离差 #########
+        disDiff = np.full_like(self.S1_Time, '-1', dtype='i2')
+        a = np.power(self.S2_Lon[idx] - self.S1_Lon[idx], 2)
+        b = np.power(self.S2_Lat[idx] - self.S1_Lat[idx], 2)
         disDiff[idx] = np.sqrt(a + b) * 100.
 
         idx_Rough = np.logical_and(disDiff < modeCfg.distdif_max, disDiff >= 0)
         idx1 = np.where(idx_Rough)
         print u'1. 距离过滤后剩余点 ', len(idx1[0])
 
-        timeDiff = np.abs(self.Time1 - self.Time2)
+        timeDiff = np.abs(self.S1_Time - self.S2_Time)
 
         idx_Rough = np.logical_and(idx_Rough, timeDiff <= modeCfg.timedif_max)
         idx1 = np.where(idx_Rough)
         print u'2. 时间过滤后剩余点 ', len(idx1[0])
-        ############### 过滤太阳天顶角 ###############
+        # 过滤太阳天顶角 ###############
         idx_Rough = np.logical_and(
-            idx_Rough, self.SunZ1 <= modeCfg.solzenith_max)
+            idx_Rough, self.S1_SoZ <= modeCfg.solzenith_max)
         idx_Rough = np.logical_and(
-            idx_Rough, self.SunZ2 <= modeCfg.solzenith_max)
+            idx_Rough, self.S2_SoZ <= modeCfg.solzenith_max)
         idx1 = np.where(idx_Rough)
         print u'3. 太阳天顶角过滤后剩余点 ', len(idx1[0])
 
-        ############### 计算耀斑角 ###############
-        glint1 = np.full_like(self.SatZ1, -999.)
-        glint2 = np.full_like(self.SatZ1, -999.)
-#         print 'self.SatA1[idx]=', np.min(self.SatA1[idx]), np.max(self.SatA1[idx])
-#         print 'self.SatZ1[idx]=', np.min(self.SatZ1[idx]), np.max(self.SatZ1[idx])
-#         print 'self.SunA1[idx]=', np.min(self.SunA1[idx]), np.max(self.SunA1[idx])
-# print 'self.SunZ1[idx]=', np.min(self.SunZ1[idx]),
-# np.max(self.SunZ1[idx])
+        # 计算耀斑角 ###############
+        glint1 = np.full_like(self.S1_SatZ, -999.)
+        glint2 = np.full_like(self.S1_SatZ, -999.)
 
         glint1[idx] = sun_glint_cal(
-            self.SatA1[idx], self.SatZ1[idx], self.SunA1[idx], self.SunZ1[idx])
+            self.S1_SatA[idx], self.S1_SatZ[idx], self.S1_SoA[idx], self.S1_SoZ[idx])
         glint2[idx] = sun_glint_cal(
-            self.SatA2[idx], self.SatZ2[idx], self.SunA2[idx], self.SunZ2[idx])
-
-#         self.Glint1 = glint1
-#         self.Glint2 = glint2
-
-#         print 'glint1', np.min(glint1), np.max(glint1)
-#         print 'glint2', np.min(glint2), np.max(glint2)
-#         print 'glint type ', type(glint1), glint1.shape
+            self.S2_SatA[idx], self.S2_SatZ[idx], self.S2_SoA[idx], self.S2_SoZ[idx])
 
         idx_Rough = np.logical_and(idx_Rough, glint1 > modeCfg.solglint_min)
         idx_Rough = np.logical_and(idx_Rough, glint2 > modeCfg.solglint_min)
@@ -743,10 +417,10 @@ class COLLOC_COMM(object):
         idx1 = np.where(idx_Rough)
         print u'4. 太阳耀斑角过滤后剩余点 ', len(idx1[0])
 
-        ############### 角度均匀性 #################
-        SatZRaio = np.full_like(self.Time1, 9999)
-        SatZ1 = np.cos(self.SatZ1[idx] * np.pi / 180.)
-        SatZ2 = np.cos(self.SatZ2[idx] * np.pi / 180.)
+        # 角度均匀性 #################
+        SatZRaio = np.full_like(self.S1_Time, 9999)
+        SatZ1 = np.cos(self.S1_SatZ[idx] * np.pi / 180.)
+        SatZ2 = np.cos(self.S2_SatZ[idx] * np.pi / 180.)
         SatZRaio[idx] = np.abs(SatZ1 / SatZ2 - 1.)
 
         idx_Rough = np.logical_and(idx_Rough, SatZRaio <= modeCfg.angledif_max)
@@ -754,7 +428,7 @@ class COLLOC_COMM(object):
         print u'5. 卫星天顶角均匀性过滤后剩余点 ', len(idx1[0])
 
         idx_Rough = np.logical_and(
-            idx_Rough, self.SatZ1 <= modeCfg.satzenith_max)
+            idx_Rough, self.S1_SatZ <= modeCfg.satzenith_max)
         idx1 = np.where(idx_Rough)
         print u'6. FY卫星观测角(天顶角)滤后剩余点 ', len(idx1[0])
         self.MaskRough[idx1] = 1
@@ -762,18 +436,21 @@ class COLLOC_COMM(object):
         # 添加spec, 粗匹配后剩余的点是要记录光谱谱线的。。。2维转1维下标
         idx_1d = np.ravel_multi_index(idx1, (self.row, self.col))
 
-        if modeCfg.write_spec and self.spec_MaskRough_value is None:
+        if modeCfg.write_spec:
             # 定义spec_MaskRough_value 然后记录需要保存的谱线
-            self.spec_MaskRough_value = []
-            for i in idx_1d:
-                self.spec_MaskRough_value.append(self.spec_MaskRough_all[i])
-            self.spec_MaskRough_value = np.array(self.spec_MaskRough_value)
+            if hasattr(self, 'S2_Spec_all'):
+                for i in idx_1d:
+                    self.S2_Spectral.append(self.S2_Spec_all[i])
+                self.S2_Spectral = np.array(self.S2_Spectral)
 
-            # 记录根据MaskRough表记录的格点信息
-            self.spec_MaskRough_row = idx1[0]
-            self.spec_MaskRough_col = idx1[1]
+                # 记录根据MaskRough表记录的格点信息
+                self.S2_Spec_row = idx1[0]
+                self.S2_Spec_col = idx1[1]
 
         for Band1 in modeCfg.chan1:
+            # 掩码清零
+            self.MaskFine[Band1][:] = 0
+
             th_vaue_max = modeCfg.CH_threshold[Band1]['value_max']
             th1 = modeCfg.CH_threshold[Band1]['angledif_max']
             th2 = modeCfg.CH_threshold[Band1]['homodif_fov_max']
@@ -787,62 +464,67 @@ class COLLOC_COMM(object):
 
             flag = 0
             # 如果 rad和tbb都有就用rad 做均匀性判断
-            if (self.FovRadMean1[Band1] is not None) and (self.FovTbbMean1[Band1]is not None):
+            if hasattr(self, 'S1_FovRadMean')and Band1 in self.S1_FovRadMean.keys():
                 flag = 'ir'
                 # 固定通道值用于检测红外晴空和云
 #                 irValue = self.FovTbbMean1[modeCfg.clear_band_ir]
                 homoFov1 = np.abs(
-                    self.FovRadStd1[Band1] / self.FovRadMean1[Band1])
+                    self.S1_FovRadStd[Band1] / self.S1_FovRadMean[Band1])
                 homoEnv1 = np.abs(
-                    self.EnvRadStd1[Band1] / self.EnvRadMean1[Band1])
+                    self.S1_EnvRadStd[Band1] / self.S1_EnvRadMean[Band1])
                 homoFovEnv1 = np.abs(
-                    self.FovRadMean1[Band1] / self.EnvRadMean1[Band1] - 1)
-                homoValue1 = self.FovRadMean1[Band1]
+                    self.S1_FovRadMean[Band1] / self.S1_EnvRadMean[Band1] - 1)
+                homoValue1 = self.S1_FovRadMean[Band1]
+
                 homoFov2 = np.abs(
-                    self.FovRadStd2[Band1] / self.FovRadMean2[Band1])
+                    self.S2_FovRadStd[Band1] / self.S2_FovRadMean[Band1])
                 homoEnv2 = np.abs(
-                    self.EnvRadStd2[Band1] / self.EnvRadMean2[Band1])
+                    self.S2_EnvRadStd[Band1] / self.S2_EnvRadMean[Band1])
                 homoFovEnv2 = np.abs(
-                    self.FovRadMean2[Band1] / self.EnvRadMean2[Band1] - 1)
-                homoValue2 = self.FovRadMean2[Band1]
+                    self.S2_FovRadMean[Band1] / self.S2_EnvRadMean[Band1] - 1)
+                homoValue2 = self.S2_FovRadMean[Band1]
+
             # 如果只有 tbb 就用tbb
-            elif (self.FovTbbMean1[Band1] is not None) and (self.FovRadMean1[Band1] is None):
-                flag = 'ir'
-                # 固定通道值用于检测红外晴空和云
-#                 irValue = self.FovTbbMean1[modeCfg.clear_band_ir]
-                homoFov1 = np.abs(
-                    self.FovTbbStd1[Band1] / self.FovTbbMean1[Band1])
-                homoEnv1 = np.abs(
-                    self.EnvTbbStd1[Band1] / self.EnvTbbMean1[Band1])
-                homoFovEnv1 = np.abs(
-                    self.FovTbbMean1[Band1] / self.EnvTbbMean1[Band1] - 1)
-                homoValue1 = self.FovTbbMean1[Band1]
-                homoFov2 = np.abs(
-                    self.FovTbbStd2[Band1] / self.FovTbbMean2[Band1])
-                homoEnv2 = np.abs(
-                    self.EnvTbbStd2[Band1] / self.EnvTbbMean2[Band1])
-                homoFovEnv2 = np.abs(
-                    self.FovTbbMean2[Band1] / self.EnvTbbMean2[Band1] - 1)
-                homoValue2 = self.FovTbbMean2[Band1]
-            elif self.FovRefMean1[Band1] is not None:
+            if hasattr(self, 'S1_FovTbbMean') and not hasattr(self, 'S1_FovRadMean'):
+                if Band1 in self.S1_FovTbbMean.keys():
+                    flag = 'ir'
+                    # 固定通道值用于检测红外晴空和云
+    #                 irValue = self.FovTbbMean1[modeCfg.clear_band_ir]
+                    homoFov1 = np.abs(
+                        self.FovTbbStd1[Band1] / self.FovTbbMean1[Band1])
+                    homoEnv1 = np.abs(
+                        self.EnvTbbStd1[Band1] / self.EnvTbbMean1[Band1])
+                    homoFovEnv1 = np.abs(
+                        self.FovTbbMean1[Band1] / self.EnvTbbMean1[Band1] - 1)
+                    homoValue1 = self.FovTbbMean1[Band1]
+                    homoFov2 = np.abs(
+                        self.FovTbbStd2[Band1] / self.FovTbbMean2[Band1])
+                    homoEnv2 = np.abs(
+                        self.EnvTbbStd2[Band1] / self.EnvTbbMean2[Band1])
+                    homoFovEnv2 = np.abs(
+                        self.FovTbbMean2[Band1] / self.EnvTbbMean2[Band1] - 1)
+                    homoValue2 = self.FovTbbMean2[Band1]
+            # 可见光通道
+            if hasattr(self, 'S1_FovRefMean') and Band1 in self.S1_FovRefMean.keys():
                 flag = 'vis'
 #                 visValue = self.FovRefMean1[modeCfg.clear_band_vis]
                 homoFov1 = np.abs(
-                    self.FovRefStd1[Band1] / self.FovRefMean1[Band1])
+                    self.S1_FovRefStd[Band1] / self.S1_FovRefMean[Band1])
                 homoEnv1 = np.abs(
-                    self.EnvRefStd1[Band1] / self.EnvRefMean1[Band1])
+                    self.S1_EnvRefStd[Band1] / self.S1_EnvRefMean[Band1])
                 homoFovEnv1 = np.abs(
-                    self.FovRefMean1[Band1] / self.EnvRefMean1[Band1] - 1)
-#                 homoFovEnv1 = np.abs(homoFov1 / homoEnv1 - 1)
-                homoValue1 = self.FovRefMean1[Band1]
+                    self.S1_FovRefMean[Band1] / self.S1_EnvRefMean[Band1] - 1)
+                homoValue1 = self.S1_FovRefMean[Band1]
+
                 homoFov2 = np.abs(
-                    self.FovRefStd2[Band1] / self.FovRefMean2[Band1])
+                    self.S2_FovRefStd[Band1] / self.S2_FovRefMean[Band1])
                 homoEnv2 = np.abs(
-                    self.EnvRefStd2[Band1] / self.EnvRefMean2[Band1])
+                    self.S2_EnvRefStd[Band1] / self.S2_EnvRefMean[Band1])
                 homoFovEnv2 = np.abs(
-                    self.FovRefMean2[Band1] / self.EnvRefMean2[Band1] - 1)
-                homoValue2 = self.FovRefMean2[Band1]
-            #### 云判识关闭状态 ####
+                    self.S2_FovRefMean[Band1] / self.S2_EnvRefMean[Band1] - 1)
+                homoValue2 = self.S2_FovRefMean[Band1]
+
+            # 云判识关闭状态 ####
             if (modeCfg.clear_min_ir == 0 and 'ir' in flag) or (modeCfg.clear_max_vis == 0 and 'vis' in flag):
 
                 condition = np.logical_and(self.MaskRough > 0, True)
@@ -887,17 +569,17 @@ class COLLOC_COMM(object):
                 print u'%s %s 云判识关闭,饱和值2过滤后，精匹配点个数 %d' % (Band1, flag, len(idx[0]))
                 self.MaskFine[Band1][idx] = 1
 
-            #### 云判识开启状态 ####
+            # 云判识开启状态 ####
             else:
                 # 晴空判别
                 if 'ir' in flag:
                     # 固定通道值用于检测可见晴空和云
-                    irValue = self.FovTbbMean1[modeCfg.clear_band_ir]
+                    irValue = self.S1_FovTbbMean[modeCfg.clear_band_ir]
                     condition = np.logical_and(
                         self.MaskRough > 0, irValue >= modeCfg.clear_min_ir)
                 elif 'vis' in flag:
                     # 固定通道值用于检测可见晴空和云
-                    visValue = self.FovRefMean1[modeCfg.clear_band_vis]
+                    visValue = self.S1_FovRefMean[modeCfg.clear_band_vis]
                     condition = np.logical_and(
                         self.MaskRough > 0, visValue < modeCfg.clear_max_vis)
                     condition = np.logical_and(visValue > 0, condition)
@@ -989,6 +671,31 @@ class COLLOC_COMM(object):
                 print u'%s %s 云判识开启，匹配点个数，晴空 %d 云区 %d 总计：%d' % (Band1, flag, len(idx_clear[0]), len(idx_cloud[0]), totalNums)
                 self.MaskFine[Band1][idx_cloud] = 1
 
+    def reload_data(self, ICFG, MCFG):
+        """
+        :param ICFG: 输入配置文件
+        :param MCFG: 阈值配置文件
+        :return:
+        """
+        print ' reaload data'
+        i_file = ICFG.ofile
+
+        with h5py.File(i_file, 'r') as h5file_r:
+            for key in h5file_r.keys():
+                pre_rootgrp = h5file_r.get(key)  # 获取根下名字
+                if type(pre_rootgrp).__name__ == "Group":
+                    # 组下的所有数据集
+                    for key_grp in pre_rootgrp.keys():
+                        if not hasattr(self, key_grp):
+                            self.__dict__[key_grp] = {}
+                        dset_path = '/' + key + '/' + key_grp
+                        self.__dict__[key_grp][
+                            key] = h5file_r.get(dset_path)[:]
+
+                # 根下的数据集
+                else:
+                    self.__dict__[key] = h5file_r.get(key)[:]
+
     def rewrite_hdf5(self, ICFG, MCFG):
         """
         :param ICFG: 输入配置文件
@@ -1016,186 +723,49 @@ class COLLOC_COMM(object):
             print('colloc point is zero')
             sys.exit(-1)
 
-        # 根据卫星性质来命名数据集，固定标识，避免命名烦恼 烦恼 烦恼
-        NameHead1 = 'S1_'
-        NameHead2 = 'S2_'
         # 创建文件夹
-        MainPath, MainFile = os.path.split(ICFG.ofile)
+        MainPath, _ = os.path.split(ICFG.ofile)
         if not os.path.isdir(MainPath):
             os.makedirs(MainPath)
 
         # 创建hdf5文件
         h5File_W = h5py.File(ICFG.ofile, 'w')
 
-        if self.spec_MaskRough_value is not None:
-            dset = h5File_W.create_dataset('%sSpec_MaskRough_value' % NameHead2, dtype='f4',
-                                           data=self.spec_MaskRough_value, compression='gzip', compression_opts=5, shuffle=True)
-            h5File_W.create_dataset('%sSpec_MaskRough_row' % NameHead2, dtype='i2',
-                                    data=self.spec_MaskRough_row, compression='gzip', compression_opts=5, shuffle=True)
-            h5File_W.create_dataset('/%sSpec_MaskRough_col' % NameHead2, dtype='i2',
-                                    data=self.spec_MaskRough_col, compression='gzip', compression_opts=5, shuffle=True)
+        # wangpeng add 2018-06-30 增加系数文件
+        if hasattr(self, 'S1_cal_coeff'):
+            h5File_W.attrs.create(
+                'S1_cal_coeff', self.S1_cal_coeff.values(), dtype='f4')
 
-            dset.attrs.create(
-                'Long_name', 'Record spectral lines obtained from MaskRough dataset', shape=(1,), dtype='S64')
-        # 生成 h5,首先写入全局变量
-        # 第一颗传感器的全局数据信息
-        h5File_W.create_dataset(
-            '%sLon' % NameHead1, dtype='f4', data=self.Lon1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sLat' % NameHead1, dtype='f4', data=self.Lat1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sTime' % NameHead1, dtype='f4',
-                                data=self.Time1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sSatA' % NameHead1, dtype='f4',
-                                data=self.SatA1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sSatZ' % NameHead1, dtype='f4',
-                                data=self.SatZ1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sSoA' % NameHead1, dtype='f4', data=self.SunA1, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sSoZ' % NameHead1, dtype='f4', data=self.SunZ1, compression='gzip', compression_opts=5, shuffle=True)
+            for band in MCFG.chan1:
+                group = h5File_W.create_group(band)
+                group.attrs.create(
+                    'S1_cal_coeff', self.S1_cal_coeff[band], dtype='f4')
 
-        if self.LandCover1 is not None:
-            h5File_W.create_dataset('%sLandCover' % NameHead1, dtype='f4',
-                                    data=self.LandCover1, compression='gzip', compression_opts=5, shuffle=True)
-        if self.LandSeaMask1 is not None:
-            h5File_W.create_dataset('%sLandSeaMask' % NameHead1, dtype='f4',
-                                    data=self.LandSeaMask1, compression='gzip', compression_opts=5, shuffle=True)
+        for member in self.__dict__.keys():
+            dname = eval('self.%s' % member)
+            if isinstance(dname, dict):
+                # 注意，注意 ！！！ 记录光谱信息的字典要过滤掉，在重处理模式下这个没法更新，需要删除文件处理
+                if 'S2_Spec_all' in member:
+                    continue
+                elif 'S1_cal_coeff' in member:
+                    continue
+                for band in dname.keys():
+                    str_dname = '/' + band + '/' + member
+                    dset = h5File_W.create_dataset(
+                        str_dname, data=dname[band], compression='gzip', compression_opts=5, shuffle=True)
+                    if 'MaskFine' in member:
+                        dset.attrs.create(
+                            'Long_name', 'after scene homogenous collocation', shape=(1,), dtype='S32')
 
-        # 第二颗传感器的全局数据信息
-        h5File_W.create_dataset(
-            '%sLon' % NameHead2, dtype='f4', data=self.Lon2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sLat' % NameHead2, dtype='f4', data=self.Lat2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sTime' % NameHead2, dtype='f4',
-                                data=self.Time2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sSatA' % NameHead2, dtype='f4',
-                                data=self.SatA2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset('%sSatZ' % NameHead2, dtype='f4',
-                                data=self.SatZ2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sSoA' % NameHead2, dtype='f4', data=self.SunA2, compression='gzip', compression_opts=5, shuffle=True)
-        h5File_W.create_dataset(
-            '%sSoZ' % NameHead2, dtype='f4', data=self.SunZ2, compression='gzip', compression_opts=5, shuffle=True)
-
-        if self.LandCover2 is not None:
-            h5File_W.create_dataset('%sLandCover' % NameHead2, dtype='f4',
-                                    data=self.LandCover2, compression='gzip', compression_opts=5, shuffle=True)
-        if self.LandSeaMask2 is not None:
-            h5File_W.create_dataset('%sLandSeaMask' % NameHead2, dtype='f4',
-                                    data=self.LandSeaMask2, compression='gzip', compression_opts=5, shuffle=True)
-
-        # 写入掩码属性
-        dset = h5File_W.create_dataset(
-            'MaskRough', dtype='u2', data=self.MaskRough, compression='gzip', compression_opts=5, shuffle=True)
-        dset.attrs.create(
-            'Long_name', 'after time and angle collocation', shape=(1,), dtype='S32')
-        # 写入公共区域属性
-        h5File_W.create_dataset(
-            'PubIdx', dtype='u2', data=self.PubIdx, compression='gzip', compression_opts=5, shuffle=True)
-
-        # 写入1通道数据信息
-        for Band in MCFG.chan1:
-            ###################### 第一颗传感器通道数据 ########################
-
-            if self.SV1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sSV' % (Band, NameHead1), dtype='f4', data=self.SV1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-            if self.BB1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sBB' % (Band, NameHead1), dtype='f4', data=self.BB1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovDnMean1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovDnMean' % (Band, NameHead1), dtype='f4', data=self.FovDnMean1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovDnStd' % (Band, NameHead1), dtype='f4', data=self.FovDnStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvDnMean' % (Band, NameHead1), dtype='f4', data=self.EnvDnMean1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvDnStd' % (Band, NameHead1), dtype='f4', data=self.EnvDnStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovRefMean1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovRefMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.FovRefMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovRefStd' % (Band, NameHead1), dtype='f4', data=self.FovRefStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRefMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.EnvRefMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRefStd' % (Band, NameHead1), dtype='f4', data=self.EnvRefStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovRadMean1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovRadMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.FovRadMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovRadStd' % (Band, NameHead1), dtype='f4', data=self.FovRadStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRadMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.EnvRadMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRadStd' % (Band, NameHead1), dtype='f4', data=self.EnvRadStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovTbbMean1[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovTbbMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.FovTbbMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovTbbStd' % (Band, NameHead1), dtype='f4', data=self.FovTbbStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvTbbMean' % (Band, NameHead1), dtype='f4',
-                                        data=self.EnvTbbMean1[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvTbbStd' % (Band, NameHead1), dtype='f4', data=self.EnvTbbStd1[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            ###################### 第二颗传感器通道数据 ########################
-            if self.SV2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sSV' % (Band, NameHead2), dtype='f4', data=self.SV2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-            if self.BB2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sBB' % (Band, NameHead2), dtype='f4', data=self.BB2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovDnMean2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovDnMean' % (Band, NameHead2), dtype='f4', data=self.FovDnMean2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovDnStd' % (Band, NameHead2), dtype='f4', data=self.FovDnStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvDnMean' % (Band, NameHead2), dtype='f4', data=self.EnvDnMean2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvDnStd' % (Band, NameHead2), dtype='f4', data=self.EnvDnStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovRefMean2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovRefMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.FovRefMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovRefStd' % (Band, NameHead2), dtype='f4', data=self.FovRefStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRefMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.EnvRefMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRefStd' % (Band, NameHead2), dtype='f4', data=self.EnvRefStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovRadMean2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovRadMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.FovRadMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovRadStd' % (Band, NameHead2), dtype='f4', data=self.FovRadStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRadMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.EnvRadMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvRadStd' % (Band, NameHead2), dtype='f4', data=self.EnvRadStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            if self.FovTbbMean2[Band] is not None:
-                h5File_W.create_dataset('/%s/%sFovTbbMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.FovTbbMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sFovTbbStd' % (Band, NameHead2), dtype='f4', data=self.FovTbbStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvTbbMean' % (Band, NameHead2), dtype='f4',
-                                        data=self.EnvTbbMean2[Band], compression='gzip', compression_opts=5, shuffle=True)
-                h5File_W.create_dataset('/%s/%sEnvTbbStd' % (Band, NameHead2), dtype='f4', data=self.EnvTbbStd2[
-                                        Band], compression='gzip', compression_opts=5, shuffle=True)
-
-            dset = h5File_W.create_dataset('/%s/MaskFine' % Band, dtype='u2', data=self.MaskFine[
-                                           Band], compression='gzip', compression_opts=5, shuffle=True)
-            dset.attrs.create(
-                'Long_name', 'after scene homogenous collocation', shape=(1,), dtype='S32')
+            elif isinstance(dname, np.ndarray):
+                dset = h5File_W.create_dataset(
+                    member, data=dname, compression='gzip', compression_opts=5, shuffle=True)
+                if 'S2_Spectral' in member:
+                    dset.attrs.create(
+                        'Long_name', 'Record spectral lines obtained from MaskRough dataset', shape=(1,), dtype='S64')
+                elif 'MaskRough' in member:
+                    dset.attrs.create(
+                        'Long_name', 'after time and angle collocation', shape=(1,), dtype='S32')
 
         h5File_W.close()
 
@@ -1205,81 +775,109 @@ class COLLOC_COMM(object):
 
         for Band in MCFG.chan1:
             idx = np.where(self.MaskFine[Band] > 0)
-            if self.FovRefMean1[Band] is not None and Band in MCFG.axis_ref:
-                x = self.FovRefMean1[Band][idx]
-                y = self.FovRefMean2[Band][idx]
-                if len(x) >= 2:
-                    value_min = value_max = None
-                    flag = 'Ref'
-                    print('ref', Band, len(x), np.min(x), np.max(x),
-                          np.min(y), np.max(y))
-                    if MCFG.AutoRange == 'ON':
-                        value_min = np.min([np.min(x), np.min(y)])
-                        value_max = np.max([np.max(x), np.max(y)])
-                    elif len(MCFG.axis_ref) != 0:
-                        value_min = MCFG.axis_ref[Band][0]
-                        value_max = MCFG.axis_ref[Band][1]
-                        print(Band, value_min, value_max)
-                    if value_min is not None and value_max is not None:
-                        regression(x, y, value_min, value_max,
-                                   flag, ICFG, MCFG, Band)
+            if hasattr(self, 'S1_FovRefMean'):
+                if Band in self.S1_FovRefMean.keys() and Band in MCFG.axis_ref:
+                    x = self.S1_FovRefMean[Band][idx]
+                    y = self.S2_FovRefMean[Band][idx]
+                    if len(x) >= 2:
+                        value_min = value_max = None
+                        flag = 'Ref'
+                        print('ref', Band, len(x), np.min(x), np.max(x),
+                              np.min(y), np.max(y))
+                        if MCFG.AutoRange == 'ON':
+                            value_min = np.min([np.min(x), np.min(y)])
+                            value_max = np.max([np.max(x), np.max(y)])
+                        elif len(MCFG.axis_ref) != 0:
+                            value_min = MCFG.axis_ref[Band][0]
+                            value_max = MCFG.axis_ref[Band][1]
+                            print(Band, value_min, value_max)
+                        if value_min is not None and value_max is not None:
+                            regression(x, y, value_min, value_max,
+                                       flag, ICFG, MCFG, Band)
+            if hasattr(self, 'S1_FovRadMean'):
+                if Band in self.S1_FovRadMean.keys() and Band in MCFG.axis_rad:
+                    x = self.S1_FovRadMean[Band][idx]
+                    y = self.S2_FovRadMean[Band][idx]
+                    if len(x) >= 2:
+                        value_min = value_max = None
+                        flag = 'Rad'
+                        print('rad', Band, len(x), np.min(x), np.max(x),
+                              np.min(y), np.max(y))
+                        if MCFG.AutoRange == 'ON':
+                            value_min = np.min([np.min(x), np.min(y)])
+                            value_max = np.max([np.max(x), np.max(y)])
+                        elif len(MCFG.axis_rad) != 0:
+                            value_min = MCFG.axis_rad[Band][0]
+                            value_max = MCFG.axis_rad[Band][1]
+                        if value_min is not None and value_max is not None:
+                            regression(x, y, value_min, value_max,
+                                       flag, ICFG, MCFG, Band)
+            if hasattr(self, 'S1_FovTbbMean'):
+                if Band in self.S1_FovTbbMean.keys() and Band in MCFG.axis_rad:
+                    x = self.S1_FovTbbMean[Band][idx]
+                    y = self.S2_FovTbbMean[Band][idx]
+                    if len(x) >= 2:
+                        value_min = value_max = None
+                        flag = 'Tbb'
+                        print('tbb', Band, len(x), np.min(x),
+                              np.max(x), np.min(y), np.max(y))
+                        if MCFG.AutoRange == 'ON':
+                            value_min = np.min([np.min(x), np.min(y)])
+                            value_max = np.max([np.max(x), np.max(y)])
+                        elif len(MCFG.axis_tbb) != 0:
+                            value_min = MCFG.axis_tbb[Band][0]
+                            value_max = MCFG.axis_tbb[Band][1]
+                        if value_min is not None and value_max is not None:
+                            regression(x, y, value_min, value_max,
+                                       flag, ICFG, MCFG, Band)
+        if hasattr(self, 'S1_FovRefMean'):
+            a = set(self.S1_FovRefMean.keys())
+            b = set(['CH_01', 'CH_02', 'CH_03'])
+            c = a.intersection(b)
 
-            if self.FovRadMean1[Band] is not None and Band in MCFG.axis_rad:
-                x = self.FovRadMean1[Band][idx]
-                y = self.FovRadMean2[Band][idx]
-                if len(x) >= 2:
-                    value_min = value_max = None
-                    flag = 'Rad'
-                    print('rad', Band, len(x), np.min(x), np.max(x),
-                          np.min(y), np.max(y))
-                    if MCFG.AutoRange == 'ON':
-                        value_min = np.min([np.min(x), np.min(y)])
-                        value_max = np.max([np.max(x), np.max(y)])
-                    elif len(MCFG.axis_rad) != 0:
-                        value_min = MCFG.axis_rad[Band][0]
-                        value_max = MCFG.axis_rad[Band][1]
-                    if value_min is not None and value_max is not None:
-                        regression(x, y, value_min, value_max,
-                                   flag, ICFG, MCFG, Band)
+            if len(c) == 3:
+                print '真彩图  显示匹配位置'
+                R = self.S1_FovRefMean['CH_03']
+                G = self.S1_FovRefMean['CH_02']
+                B = self.S1_FovRefMean['CH_01']
+                mask = self.MaskFine['CH_01']
 
-            if self.FovTbbMean1[Band] is not None and Band in MCFG.axis_rad:
-                x = self.FovTbbMean1[Band][idx]
-                y = self.FovTbbMean2[Band][idx]
-                if len(x) >= 2:
-                    value_min = value_max = None
-                    flag = 'Tbb'
-                    print('tbb', Band, len(x), np.min(x),
-                          np.max(x), np.min(y), np.max(y))
-                    if MCFG.AutoRange == 'ON':
-                        value_min = np.min([np.min(x), np.min(y)])
-                        value_max = np.max([np.max(x), np.max(y)])
-                    elif len(MCFG.axis_tbb) != 0:
-                        value_min = MCFG.axis_tbb[Band][0]
-                        value_max = MCFG.axis_tbb[Band][1]
-                    if value_min is not None and value_max is not None:
-                        regression(x, y, value_min, value_max,
-                                   flag, ICFG, MCFG, Band)
-        a = set(self.FovRefMean1.keys())
-        b = set(['CH_01', 'CH_02', 'CH_03'])
-        c = a.intersection(b)
+                # 把匹配点进行补点，图像好看
+                for i in xrange(3):
+                    fill_points_2d(R, -999.)
+                    fill_points_2d(G, -999.)
+                    fill_points_2d(B, -999.)
 
-        if len(c) == 3:
-            print '真彩图  显示匹配位置'
-            R = self.FovRefMean1['CH_03']
-            G = self.FovRefMean1['CH_02']
-            B = self.FovRefMean1['CH_01']
-            mask = self.MaskFine['CH_01']
+                MainPath, _ = os.path.split(ICFG.ofile)
+                if not os.path.isdir(MainPath):
+                    os.makedirs(MainPath)
+                file_name = '%s+%s_%s_Map321.png' % (
+                    ICFG.sat1, ICFG.sensor1, ICFG.ymd)
+                path_name = os.path.join(MainPath, file_name)
+                dv_img.dv_rgb(R, G, B, path_name, 2, 1, mask)
 
-            # 把匹配点进行补点，图像好看
-            for i in xrange(3):
-                fill_points_2d(R, -999.)
-                fill_points_2d(G, -999.)
-                fill_points_2d(B, -999.)
 
-            MainPath, _ = os.path.split(ICFG.ofile)
-            if not os.path.isdir(MainPath):
-                os.makedirs(MainPath)
-            file_name = '%s+%s_%s_Map321.png' % (
-                ICFG.sat1, ICFG.sensor1, ICFG.ymd)
-            path_name = os.path.join(MainPath, file_name)
-            dv_img.dv_rgb(R, G, B, path_name, 2, 1, mask)
+class test1 ():
+
+    def __init__(self):
+        self.a = np.zeros((3, 4))
+        self.b = {}
+        self.b['01'] = np.zeros((3, 4))
+        self.b['02'] = np.zeros((3, 4))
+        self.b['03'] = np.zeros((3, 4))
+
+    def write(self):
+        for member in self.__dict__.keys():
+            dname = eval('self.%s' % member)
+            if isinstance(dname, dict):
+                for ch in dname.keys():
+                    print ch
+
+
+if __name__ == "__main__":
+    tt = test1()
+#     print type(tt.a)
+#     print type(tt.b)
+#     print isinstance(tt.a, np.ndarray)
+    tt.write()
+    pass
