@@ -313,6 +313,10 @@ class COLLOC_COMM(object):
         self.__init_class_array_LonLat(
             D1, 'Lats', 'S1_LatArea', modeCfg, P1, idx)
 
+        # # wangpeng add 2018-12-10 增加云检测标识
+        self.__init_class_array_LonLat(
+            D1, 'CloudMask', 'S1_CloudMaskArea', modeCfg, P1, idx)
+
         # 保存辅助信息，开始计算中心点圈的37个点位置 (精匹配增加)
         if not hasattr(self, 'S2_FootLat'):
             self.S2_FootLat = []
@@ -833,6 +837,9 @@ class COLLOC_COMM(object):
         with h5py.File(i_file, 'r+') as hdf5File:
             dset = hdf5File.get('MaskRough')
             dset[...] = self.MaskRough
+#             # 增加云记录
+#             hdf5File.create_dataset(
+#                 'S1_CloudMaskArea', data=self.S1_CloudMaskArea, compression='gzip', compression_opts=5, shuffle=True)
 
             for band in MCFG.chan1:
                 dset = hdf5File.get('%s/MaskFine' % band)

@@ -1,13 +1,16 @@
 # coding: utf-8
-from pyproj import Proj, transform
-import numpy as np
-from dp_2d import fill_2d
-from math import ceil
-from PB.pb_space import deg2meter
 '''
 投影公共模块
 @author: zhangtao
 '''
+
+from math import ceil
+
+from pyproj import Proj, transform
+
+from PB.pb_space import deg2meter
+from dp_2d import fill_2d
+import numpy as np
 
 
 class prj_gll():
@@ -81,7 +84,7 @@ class prj_gll():
         return np.floor((self.nlat - lats) / self.resLat).astype(int)  # 行号
 
 
-class prj_core():
+class prj_core(object):
     '''
     投影公共类
     '''
@@ -115,7 +118,6 @@ class prj_core():
         '''
         self.proj4str = projstr
         self.pfunc = Proj(self.proj4str)  # 转换函数
-
         # self.res 统一转换成单位米
         if unit == "m":
             self.res = res
@@ -163,6 +165,7 @@ class prj_core():
             lats = lats.reshape((-1))
             # 通过平面坐标系计算投影后的行和列
             x, y = self.pfunc(lons, lats)
+
             i = self.__y2i(y)
             j = self.__x2j(x)
             return i.reshape(args_shape), j.reshape(args_shape)
@@ -170,7 +173,6 @@ class prj_core():
             x, y = self.pfunc(lons, lats)
             i = self.__y2i(y)
             j = self.__x2j(x)
-            print i, j
             return i, j
 
     def __y2i(self, y):
@@ -313,11 +315,11 @@ if __name__ == '__main__':
         half_res, half_res)
 
     print "test1"
-    res = 17000
+    res = 5565
     p = prj_core(projstr, res, pt_tl=(-179.5, 89.5),
                  pt_br=(179.5, -89.5))  # 角点也要放在格点中心位置
     print p.y_tl, p.x_tl
-    print p.lonslats2ij(-180, 90)
+    print '1', p.lonslats2ij(np.nan, np.nan)
     print p.lons.shape
     print p.lons[0, 0],  p.lats[0, 0]
     print p.lons[-1, -1],  p.lats[-1, -1]
@@ -327,13 +329,15 @@ if __name__ == '__main__':
 #     print p.lons[0]
 
     print "\ntest2"
-    p = prj_core(projstr, res, unit="deg", row=180, col=360)
+    res = 0.05
+    p = prj_core(projstr, res, unit="deg", row=3600, col=7200)
 #     p = prj_core(projstr, 17000, row=1179, col=2350)
     print p.y_tl, p.x_tl
     print 'mmmmm'
     print p.lons[0, 0],  p.lats[0, 0]
     print p.lons[-1, -1],  p.lats[-1, -1]
-    print p.lonslats2ij(-180, 90)
+#     print p.lonslats2ij(-180, 90)
+    print '11111111', p.lonslats2ij(np.nan, np.nan)
 #     print p.lonslats2ij(-180, 90), p.lonslats2ij(-180, 90), p.lonslats2ij(180, 90), p.lonslats2ij(-180, -90)
 #     print p.lonslats2ij(10.6, 39)
 #     print p.lonslats2ij(-179, 89), p.lonslats2ij(-179.001, 89.001), p.lonslats2ij(-178.999, 88.999)

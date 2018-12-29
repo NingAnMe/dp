@@ -585,6 +585,11 @@ class COLLOC_COMM(object):
                     condition = np.logical_and(visValue > 0, condition)
 
                 idx = np.where(condition)
+
+                test_idx = np.where(self.MaskRough > 0)
+#                 print len(test_idx[0])
+#                 print modeCfg.clear_band_ir, modeCfg.clear_min_ir
+#                 print np.min(irValue[test_idx]), np.max(irValue[test_idx])
                 print u'%s %s 云判识开启,晴空点个数 %d' % (Band1, flag, len(idx[0]))
                 condition = np.logical_and(SatZRaio < th1, condition)
                 idx = np.where(condition)

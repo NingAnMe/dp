@@ -1,13 +1,15 @@
 # coding: UTF-8
-import numpy as np
-from scipy.interpolate import Rbf
-from scipy.interpolate.interpolate import interp2d
 '''
 二维矩阵操作
 Created on 2016年12月28日
 
 @author: zhangtao
 '''
+
+from scipy.interpolate import Rbf
+from scipy.interpolate.interpolate import interp2d
+
+import numpy as np
 
 
 def shrink_2d(array2d, mask, (row_small, col_small), fillValue=-9999.):
@@ -226,7 +228,6 @@ def rolling_2d_window_pro(ary2d, window, d_i, d_j, p_i, p_j):
     dj = d_j[idx] - step2
     pi = p_i[idx]
     pj = p_j[idx]
-
     # 计算均值和std
     a = np.nanmean(ary4d[di, dj], (1, 2))
     b = np.nanstd(ary4d[di, dj], (1, 2))
